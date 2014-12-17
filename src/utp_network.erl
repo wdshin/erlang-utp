@@ -154,8 +154,11 @@ send_pkt(AdvWin,
          #network { sock_info = SockInfo,
                     reply_micro = TSDiff}, Packet, ConnId)
   when is_integer(ConnId) ->
+
+
     Pkt = Packet#packet { conn_id = ConnId,
                           win_sz = AdvWin },
+    io:format("~p ~p send_pkt ~p ~p ~p ~n",[?MODULE,?LINE,SockInfo,Pkt,TSDiff]),
     utp_socket:send_pkt(SockInfo, Pkt, TSDiff).
 
 rto(#network { round_trip = RTT }) ->

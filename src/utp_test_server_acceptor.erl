@@ -71,6 +71,7 @@ handle_info(timeout, #state { socket = none} = State) ->
     error_logger:info_report([accepting]),
     case gen_utp:accept() of
         {ok, Sock} ->
+            io:format("~p ~p accepted ~p ~n",[?MODULE,?LINE,Sock]),
             error_logger:info_report([accepted]),
             {ok, _Pid} = utp_test_server_pool_sup:start_child(),
             {noreply, State#state { socket = Sock }, 0}

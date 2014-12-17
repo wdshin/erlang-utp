@@ -119,12 +119,14 @@ start_link(Socket, Addr, Port, Options) ->
 %% @doc Send a connect event
 %% @end
 connect(Pid) ->
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE,Pid]),
     utp:report_event(60, client, us, connect, []),
     sync_send_event(Pid, connect).
 
 %% @doc Send an accept event
 %% @end
 accept(Pid, SynPacket) ->
+    io:format("~p ~p accept ~p ~n",[?MODULE,?LINE,Pid]),
     utp:report_event(60, client, us, accept, [SynPacket]),
     sync_send_event(Pid, {accept, SynPacket}).
 
@@ -161,6 +163,9 @@ close(Pid) ->
 
 %% ----------------------------------------------------------------------
 incoming(Pid, Packet, Timing) ->
+
+    io:format("~p ~p incoming ~p ~n",[?MODULE,?LINE,{Pid,Packet,Timing}]),
+
     utp:report_event(50, peer, us, utp_proto:succinct_format_packet(Packet), [{packet, Packet}]),
     gen_fsm:send_event(Pid, {pkt, Packet, Timing}).
 
@@ -185,6 +190,9 @@ init([Socket, Addr, Port, Options]) ->
             CanonAddr = utp_util:canonicalize_address(Addr),
             SockInfo = utp_socket:mk(CanonAddr, Options, Port, Socket),
             Network  = utp_network:mk(?DEFAULT_PACKET_SIZE, SockInfo),
+
+            io:format("~p ~p init ~p ~n",[?MODULE,?LINE,{Network,PktBuf,ProcInfo,Options}]),
+
             {ok, report(idle), #state{ network = Network,
                                        buffer   = PktBuf,
                                        process = ProcInfo,
@@ -221,6 +229,8 @@ syn_sent({pkt, #packet { ty = st_state,
                   connector = {From, Packets},
                   retransmit_timeout = RTimeout
                 } = State) ->
+    io:format("~p ~p syn_sent pkt ~p ~n",[?MODULE,?LINE,{From,Packets}]),
+
     reply(From, ok),
     %% Empty the queue of packets for the new state
     %% We reverse the list so they are in the order we got them originally
@@ -236,6 +246,9 @@ syn_sent({pkt, #packet { ty = st_state,
                   buffer = utp_buffer:init_ackno(PktBuf, utp_util:bit16(PktSeqNo + 1))}};
 syn_sent({pkt, _Packet, _Timing} = Pkt,
          #state { connector = {From, Packets}} = State) ->
+
+    io:format("~p ~p syn_sent pkt ~p ~n",[?MODULE,?LINE,{From,Packets}]),
+
     {next_state, syn_sent,
      State#state {
        connector = {From, [Pkt | Packets]}}};
@@ -287,6 +300,7 @@ connected({pkt, #packet { ty = st_syn }, _}, State) ->
     ?INFO([duplicate_syn_packet, ignoring]),
     {next_state, connected, State};
 connected({pkt, Pkt, {TS, TSDiff, RecvTime}}, State) ->
+    
     {ok, Messages, N_Network, N_PB, N_PRI, ZWinTimeout, N_DelayAck, N_RetransTimer} =
         handle_packet_incoming(connected,
                                Pkt, utp_util:bit32(TS - RecvTime), RecvTime, TSDiff, State),
@@ -494,13 +508,30 @@ destroy(_Msg, State) ->
 idle(connect,
      From, State = #state { network = Network,
                             buffer = PktBuf}) ->
+
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE,State]),
+
     {Address, Port} = utp_network:hostname_port(Network),
+
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE, {Address, Port}]),
+
     Conn_id_recv = utp_proto:mk_connection_id(),
     gen_utp:register_process(self(), {Conn_id_recv, Address, Port}),
+
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE, Conn_id_recv]),
+
     N_Network = utp_network:set_conn_id(Conn_id_recv + 1, Network),
 
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE, N_Network]),
+
+
     SynPacket = utp_proto:mk_syn(),
+
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE, SynPacket]),
+
     send_pkt(PktBuf, N_Network, SynPacket),
+
+    io:format("~p ~p connect ~p ~n",[?MODULE,?LINE, {PktBuf, N_Network, SynPacket}]),
 
     {next_state, report(syn_sent),
      State#state { network = N_Network,

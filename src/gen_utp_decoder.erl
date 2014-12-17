@@ -29,6 +29,8 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 decode_and_dispatch(Packet, IP, Port) ->
+
+    io:format("~p ~p decode_and_dispatch ~p ~n",[?MODULE,?LINE,{Packet,IP,Port}]),
     gen_server:cast(?SERVER, {packet, Packet, IP, Port}).
 
 %%%===================================================================
@@ -51,6 +53,8 @@ handle_cast({packet, P, Addr, Port}, S) ->
                     ty = PTy } = Packet, TS, TSDiff, RecvTime}} ->
             case PTy of
                 st_reset ->
+                    io:format("~p ~p packet st_reset ~p ~n",[?MODULE,?LINE,{CID,PTy,Packet, TS, TSDiff, RecvTime}]),
+
                     case gen_utp:lookup_registrar(CID, Addr, Port) of
                         {ok, Pid} ->
                             gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
@@ -63,10 +67,16 @@ handle_cast({packet, P, Addr, Port}, S) ->
                             end
                     end;
                 _OtherState ->
-                    case gen_utp:lookup_registrar(CID, Addr, Port) of
+                    io:format("~p ~p packet other state ~p ~n",[?MODULE,?LINE,{CID,PTy,Packet, TS, TSDiff, RecvTime}]),
+                    Ret=gen_utp:lookup_registrar(CID, Addr, Port),
+                    %%case gen_utp:lookup_registrar(CID, Addr, Port) of
+                    io:format("~p ~p packet other state gen_utp:lookup_registrar ~p ~n",[?MODULE,?LINE,Ret]),
+                    case Ret of
                         {ok, Pid} ->
                             gen_utp_worker:incoming(Pid, Packet, {TS, TSDiff, RecvTime});
                         not_found ->
+                            
+
                             gen_utp:incoming_unknown(Packet, Addr, Port)
                     end
             end,

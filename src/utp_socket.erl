@@ -79,6 +79,9 @@ send_pkt(#sock_info {
     send(Socket, Addr, Port, Pkt, TSDiff).
 
 send(Socket, Addr, Port, Packet, TSDiff) ->
+
+    io:format("~p ~p send ~p ~n",[?MODULE,?LINE,{Socket, Addr, Port, Packet, TSDiff}]),
+
     utp_proto:validate(Packet),
     utp:report_event(50, us, peer, utp_proto:succinct_format_packet(Packet), [{addr_port, Addr, Port},
                                             {packet, Packet}]),
@@ -87,7 +90,14 @@ send(Socket, Addr, Port, Packet, TSDiff) ->
 send_aux(0, Socket, Addr, Port, Payload) ->
     gen_udp:send(Socket, Addr, Port, Payload);
 send_aux(N, Socket, Addr, Port, Payload) ->
-    case gen_udp:send(Socket, Addr, Port, Payload) of
+
+    io:format("~p ~p send_aux ~p ~n",[?MODULE,?LINE,{N, Socket, Addr, Port, Payload}]),
+    Ret = gen_udp:send(Socket, Addr, Port, Payload),
+
+    io:format("~p ~p send_aux returns ~p ~n",[?MODULE,?LINE,Ret]),
+
+    %%case gen_udp:send(Socket, Addr, Port, Payload) of
+    case Ret of
         ok ->
             {ok, utp_proto:current_time_us()};
         {error, enobufs} ->

@@ -26,6 +26,8 @@
          lookup_registrar/3,
          incoming_unknown/3]).
 
+-export([get_socket/0]).
+
 -type port_number() :: 0..16#FFFF.
 -opaque({socket,{type,{30,21},tuple,[{atom,{30,22},utp_sock},{type,{30,32},pid,[]}]},[]}).
 -export_type([socket/0]).
@@ -79,11 +81,15 @@ connect(Addr, Port) ->
                      {ok, socket()} | {error, term()}.
 connect(Addr, Port, Options) ->
     {ok, Socket} = get_socket(),
+    io:format("~p ~p connect socket ~p ~n",[?MODULE,?LINE,Socket]),
     {ok, Pid} = gen_utp_worker_pool:start_child(Socket, Addr, Port, Options),
+    io:format("~p ~p start_child ~p ~n",[?MODULE,?LINE,Pid]),
     case gen_utp_worker:connect(Pid) of
         ok ->
+            io:format("~p ~p connect ok ~n",[?MODULE,?LINE]),
             {ok, {utp_sock, Pid}};
         {error, Reason} ->
+            io:format("~p ~p connect error ~p ~n",[?MODULE,?LINE,Reason]),
             {error, Reason}
     end.
 
@@ -94,6 +100,7 @@ connect(Addr, Port, Options) ->
 %% @end
 -spec accept() -> {ok, socket()}.
 accept() ->
+    io:format("~p ~p accept ~n",[?MODULE,?LINE]),
     {ok, _Socket} = call(accept).
 
 %% @doc Send a message on a uTP Socket
@@ -117,9 +124,11 @@ send_msg(Socket, Msg) ->
 -spec recv(socket(), integer()) ->
                   {ok, binary()} | {error, term()}.
 recv({utp_sock, Pid}, Length) when Length >= 0 ->
+    io:format("~p ~p recv ~p ~n",[?MODULE,?LINE,{Pid,Length}]),
     gen_utp_worker:recv(Pid, Length).
 
 recv_msg(Socket) ->
+    io:format("~p ~p recv_msg ~p ~n",[?MODULE,?LINE,Socket]),
     case recv(Socket, 4) of
         {ok, <<Sz:32/integer>>} ->
             case recv(Socket, Sz) of
@@ -205,6 +214,7 @@ reply(To, Msg) ->
 %%--------------------------------------------------------------------
 init([Port, _Opts]) ->
     {ok, Socket} = gen_udp:open(Port, [binary, {active, once}]),
+    io:format("~p ~p udp socket ~p ~n",[?MODULE,?LINE,Socket]),
     ets:new(?TAB, [named_table, protected, set]),
     {ok, #state{ monitored = gb_trees:empty(),
                  listen_queue = closed,
@@ -218,9 +228,11 @@ handle_call(accept, From, #state { listen_queue = Q,
                                    monitored = Monitored,
                                    socket = Socket } = S) ->
     false = Q =:= closed,
+    io:format("~p ~p accept ~p ~n",[?MODULE,?LINE,{Q,ListenOpts,Monitored,Socket}]),
     {ok, Pairings, NewQ} = push_acceptor(From, Q),
+    io:format("~p ~p accept ~p ~n",[?MODULE,?LINE,{Pairings,NewQ}]),
     N_MonitorTree = pair_acceptors(ListenOpts, Socket, Pairings, Monitored),
-    
+    io:format("~p ~p accept ~p ~n",[?MODULE,?LINE,{N_MonitorTree}]),
     {noreply, S#state { listen_queue = NewQ,
                         monitored = N_MonitorTree }};
 handle_call({listen, Options}, _From, #state { listen_queue = closed } = S) ->
@@ -246,6 +258,7 @@ handle_call(_Request, _From, State) ->
 
 pair_acceptors(ListenOpts, Socket, Pairings, Monitored) ->
     PidsCIDs = [accept_incoming_conn(Socket, Acc, SYN, ListenOpts) || {Acc, SYN} <- Pairings],
+    io:format("~p ~p pair_acceptors ~p ~n",[?MODULE,?LINE,PidsCIDs]),
     lists:foldl(fun({Pid, CID}, MTree) ->
                         Ref = erlang:monitor(process, Pid),
                         gb_trees:enter(Ref, CID, MTree)
@@ -263,6 +276,7 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
                                                          listen_options = ListenOpts,
                                                          monitored = Monitored,
                                                          socket = Socket } = S) ->
+    io:format("~p ~p incoming_syn ~p ~n",[?MODULE,?LINE,{Packet, Addr, Port}]),
     Elem = {Packet, Addr, Port},
     case push_syn(Elem, Q) of
         synq_full ->
@@ -277,6 +291,7 @@ handle_cast({incoming_syn, Packet, Addr, Port}, #state { listen_queue = Q,
 handle_cast({generate_reset, #packet { conn_id = ConnID,
                                        seq_no  = SeqNo }, Addr, Port},
             #state { socket = Socket } = State) ->
+    io:format("~p ~p generate_reset ~p ~n",[?MODULE,?LINE,{ConnID, SeqNo,Addr, Port}]),
     {ok, _} = utp_socket:send_reset(Socket, Addr, Port, ConnID, SeqNo,
                                     utp_buffer:mk_random_seq_no()),
     {noreply, State};
@@ -287,6 +302,7 @@ handle_cast(_Msg, State) ->
 handle_info({udp, _Socket, IP, Port, Datagram},
             #state { socket = Socket } = S) ->
     %% @todo FLOW CONTROL here, because otherwise we may swamp the decoder.
+    io:format("~p ~p udp ~p ~n",[?MODULE,?LINE,{IP,Port,Datagram}]),
     gen_utp_decoder:decode_and_dispatch(Datagram, IP, Port),
     %% Quirk out the next packet :)
     inet:setopts(Socket, [{active, once}]),
@@ -314,6 +330,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%%===================================================================
 
 push_acceptor(From, #accept_queue { acceptors = AQ } = Q) ->
+    io:format("~p ~p push_acceptor ~p ~n",[?MODULE,?LINE,{From,AQ,Q}]),
     handle_queue(Q#accept_queue { acceptors = queue:in(From, AQ) }, []).
 
 push_syn(_SYNPacket, #accept_queue {
@@ -336,6 +353,8 @@ push_syn(SYNPacket, #accept_queue { incoming_conns = IC,
 handle_queue(#accept_queue { acceptors = AQ,
                              incoming_conns = IC,
                              q_len = QLen } = Q, Pairings) ->
+
+    io:format("~p ~p handle_queue ~p ~n",[?MODULE,?LINE,{AQ,IC,QLen,Q,Pairings}]),
     case {queue:out(AQ), queue:out(IC)} of
         {{{value, Acceptor}, AQ1}, {{value, SYN}, IC1}} ->
             handle_queue(Q#accept_queue { acceptors = AQ1,
